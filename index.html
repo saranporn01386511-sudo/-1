@@ -1,0 +1,283 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cat Runner 🐱</title>
+<style>
+*{box-sizing:border-box}
+body{
+ margin:0;padding:15px;min-height:100vh;
+ display:flex;justify-content:center;align-items:center;
+ background:linear-gradient(135deg,#ffe5f0,#f8d8ee);
+ font-family:Arial,sans-serif;color:#925b79;
+}
+.game{
+ width:100%;max-width:700px;background:#fff9fc;
+ padding:18px;border-radius:25px;text-align:center;
+ box-shadow:0 8px 25px #d99ab855;
+}
+h1{color:#ed83ae;margin:5px}
+.info{display:flex;justify-content:space-around;gap:5px;margin:15px 0}
+.info span{background:#ffe5f0;padding:9px;border-radius:20px;font-weight:bold}
+canvas{
+ width:100%;height:auto;background:#fff0f6;
+ border:3px solid white;border-radius:15px;
+ touch-action:manipulation;
+}
+button{
+ border:0;border-radius:25px;padding:12px 18px;
+ margin:5px;background:#ffd5e6;color:#985b79;
+ font-size:16px;font-weight:bold;cursor:pointer;
+}
+button.selected,.main{background:#f28db5;color:white}
+.main{padding:14px 30px}
+#gameOver{display:none}
+</style>
+</head>
+<body>
+<div class="game">
+<h1>🐱 Cat Runner 🎀</h1>
+<p>ช่วยเจ้าเหมียววิ่งเก็บปลาให้ได้เยอะที่สุด!</p>
+
+<div class="info">
+<span>⭐ คะแนน: <b id="score">0</b></span>
+<span>🐟 ปลา: <b id="fish">0</b></span>
+</div>
+
+<canvas id="canvas" width="700" height="300"></canvas>
+
+<div id="start">
+<h2>พร้อมเล่นหรือยัง? 💗</h2>
+<p>เลือกระดับความยาก</p>
+<button class="selected" onclick="setLevel('easy',this)">🌸 ง่าย</button>
+<button onclick="setLevel('normal',this)">🍓 ปานกลาง</button>
+<button onclick="setLevel('hard',this)">🔥 ยาก</button>
+<br>
+<button class="main" onclick="startGame()">เริ่มเกม ▶</button>
+</div>
+
+<div id="gameOver">
+<h2>จบเกมแล้ว! 💕</h2>
+<p id="result"></p>
+<button class="main" onclick="startGame()">เล่นอีกครั้ง ↻</button>
+</div>
+
+<p>แตะหน้าจอหรือกด SPACE เพื่อกระโดด</p>
+</div>
+
+<script>
+const canvas=document.getElementById("canvas");
+const ctx=canvas.getContext("2d");
+
+let level="easy",running=false;
+let score=0,fish=0,frame=0,speed=4;
+let obstacles=[],fishes=[],animation;
+const ground=250;
+
+let cat={x:80,y:ground-45,w:45,h:45,vy:0,jump:false};
+
+function setLevel(l,btn){
+ level=l;
+ document.querySelectorAll("#start button").forEach(b=>b.classList.remove("selected"));
+ btn.classList.add("selected");
+}
+
+function drawCat(){
+ let x=cat.x,y=cat.y;
+ // หู
+ ctx.fillStyle="#fff";
+ ctx.beginPath();
+ ctx.moveTo(x+5,y+15);ctx.lineTo(x+10,y);ctx.lineTo(x+22,y+12);
+ ctx.moveTo(x+25,y+12);ctx.lineTo(x+38,y);ctx.lineTo(x+42,y+15);
+ ctx.fill();
+ // ตัวแมว
+ ctx.fillStyle="white";
+ ctx.strokeStyle="#e9a8c4";
+ ctx.lineWidth=2;
+ ctx.beginPath();
+ ctx.roundRect(x,y+8,45,37,12);
+ ctx.fill();ctx.stroke();
+ // ตา
+ ctx.fillStyle="#65485a";
+ ctx.beginPath();
+ ctx.arc(x+14,y+23,2,0,7);
+ ctx.arc(x+31,y+23,2,0,7);
+ ctx.fill();
+ // จมูก
+ ctx.fillStyle="#f28db5";
+ ctx.beginPath();
+ ctx.arc(x+23,y+29,3,0,7);
+ ctx.fill();
+ // โบว์
+ ctx.fillStyle="#f28db5";
+ ctx.beginPath();
+ ctx.arc(x+38,y+10,5,0,7);
+ ctx.arc(x+46,y+10,5,0,7);
+ ctx.fill();
+}
+
+function background(){
+ ctx.fillStyle="#fff0f6";
+ ctx.fillRect(0,0,700,300);
+
+ // เมฆ
+ ctx.fillStyle="white";
+ for(let i=0;i<4;i++){
+  let x=(i*190-frame*.5)%750;
+  ctx.beginPath();
+  ctx.arc(x,55,20,0,7);
+  ctx.arc(x+20,45,24,0,7);
+  ctx.arc(x+42,55,18,0,7);
+  ctx.fill();
+ }
+
+ // พื้น
+ ctx.fillStyle="#c8efd9";
+ ctx.fillRect(0,ground,700,50);
+ ctx.fillStyle="#9edbbd";
+ ctx.fillRect(0,ground,700,5);
+}
+
+function draw(){
+ background();
+
+ // สิ่งกีดขวาง
+ obstacles.forEach(o=>{
+  ctx.fillStyle="#c58aab";
+  ctx.beginPath();
+  ctx.roundRect(o.x,o.y,o.w,o.h,6);
+  ctx.fill();
+  ctx.fillStyle="#f9d7e7";
+  ctx.fillRect(o.x+7,o.y+7,7,5);
+ });
+
+ // ปลา
+ fishes.forEach(f=>{
+  ctx.fillStyle="#ffd76e";
+  ctx.beginPath();
+  ctx.ellipse(f.x,f.y,12,8,0,0,7);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(f.x-10,f.y);
+  ctx.lineTo(f.x-19,f.y-7);
+  ctx.lineTo(f.x-19,f.y+7);
+  ctx.fill();
+ });
+
+ drawCat();
+}
+
+function jump(){
+ if(running&&!cat.jump){
+  cat.vy=-12;
+  cat.jump=true;
+ }
+}
+
+function startGame(){
+ cancelAnimationFrame(animation);
+ score=0;fish=0;frame=0;
+ obstacles=[];fishes=[];
+ cat.y=ground-cat.h;
+ cat.vy=0;cat.jump=false;
+
+ speed=level==="easy"?4:level==="normal"?5.5:7;
+
+ document.getElementById("score").textContent=0;
+ document.getElementById("fish").textContent=0;
+ document.getElementById("start").style.display="none";
+ document.getElementById("gameOver").style.display="none";
+
+ running=true;
+ loop();
+}
+
+function endGame(){
+ running=false;
+ cancelAnimationFrame(animation);
+ document.getElementById("gameOver").style.display="block";
+ document.getElementById("result").textContent=
+ "คะแนนของคุณ "+score+" คะแนน และเก็บปลาได้ "+fish+" ตัว 🐟";
+}
+
+function update(){
+ frame++;
+ score=Math.floor(frame/5)+fish*10;
+ document.getElementById("score").textContent=score;
+
+ // กระโดด
+ cat.vy+=0.6;
+ cat.y+=cat.vy;
+
+ if(cat.y>=ground-cat.h){
+  cat.y=ground-cat.h;
+  cat.vy=0;
+  cat.jump=false;
+ }
+
+ // สร้างกล่อง
+ let gap=level==="easy"?85:level==="normal"?65:48;
+ if(frame%gap===0){
+  let h=30+Math.random()*20;
+  obstacles.push({x:710,y:ground-h,w:30,h:h});
+ }
+
+ // สร้างปลา
+ if(frame%85===0){
+  fishes.push({x:710,y:ground-75-Math.random()*55});
+ }
+
+ obstacles.forEach(o=>o.x-=speed);
+ fishes.forEach(f=>f.x-=speed);
+
+ obstacles=obstacles.filter(o=>o.x+o.w>0);
+ fishes=fishes.filter(f=>f.x>0);
+
+ // ตรวจชนกล่อง
+ for(let o of obstacles){
+  if(cat.x+cat.w-5>o.x &&
+     cat.x+5<o.x+o.w &&
+     cat.y+cat.h-5>o.y){
+   endGame();
+   return;
+  }
+ }
+
+ // เก็บปลา
+ fishes=fishes.filter(f=>{
+  let dx=cat.x+22-f.x;
+  let dy=cat.y+22-f.y;
+  if(Math.hypot(dx,dy)<28){
+   fish++;
+   document.getElementById("fish").textContent=fish;
+   return false;
+  }
+  return true;
+ });
+}
+
+function loop(){
+ if(!running)return;
+ update();
+ draw();
+ if(running)animation=requestAnimationFrame(loop);
+}
+
+canvas.addEventListener("pointerdown",e=>{
+ e.preventDefault();
+ jump();
+});
+
+document.addEventListener("keydown",e=>{
+ if(e.code==="Space"||e.code==="ArrowUp"){
+  e.preventDefault();
+  jump();
+ }
+});
+
+draw();
+</script>
+</body>
+</html>
